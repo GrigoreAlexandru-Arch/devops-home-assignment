@@ -9,6 +9,11 @@ variable "ssh_allowed_ip" {
   type        = string
 }
 
+variable "ssh_key_path" {
+  description = "Path to the public SSH key used for EC2 access"
+  type        = string
+}
+
 variable "instance_type" {
   description = "The EC2 instance type for Sentry"
   type        = string

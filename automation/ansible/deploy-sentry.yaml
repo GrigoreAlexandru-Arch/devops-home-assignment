@@ -81,7 +81,6 @@
         line: 'CSRF_TRUSTED_ORIGINS = ["https://{{ alb_dns_name }}"]'
         insertafter: EOF
       become: false
-      notify: Restart Sentry Services
 
     - name: Start Sentry stack
       command: docker compose up --wait
@@ -106,10 +105,3 @@
         - create_user_result.rc != 0
         - "'already' not in create_user_result.stderr and 'already' not in create_user_result.stdout"
       changed_when: create_user_result.rc == 0
-
-  handlers:
-    - name: Restart Sentry Services
-      command: docker compose restart web worker cron relay
-      args:
-        chdir: /home/ubuntu/sentry-setup
-      become: false

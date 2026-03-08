@@ -88,7 +88,7 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_key_pair" "sentry_key" {
   key_name   = "sentry-deployer-key"
-  public_key = file("~/.ssh/sentry_aws_key.pub")
+  public_key = file(var.ssh_key_path)
 }
 
 resource "aws_instance" "sentry_server" {

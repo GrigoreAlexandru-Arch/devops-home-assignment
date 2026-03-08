@@ -15,11 +15,11 @@ This project automates the provisioning and configuration of a self-hosted Sentr
 project/
 ├── terraform/
 │   ├── main.tf
-│   ├── variables.tf
-│   └── vault.yml
+│   └── variables.tf
 └── ansible/
     ├── deploy-sentry.yml
-    └── inventory.ini
+    ├── inventory.ini
+    └── vault.yml
 
 ```
 
@@ -34,7 +34,7 @@ project/
 
 ### 1. Provision Infrastructure (Terraform)
 
-Navigate to the `terraform` directory and apply the configuration. You will need to provide values for your variables (e.g., `aws_region`, `ssh_allowed_ip`, `instance_type`, `volume_size`).
+Navigate to the `terraform` directory and apply the configuration. You will need to provide values for your variables (e.g., `aws_region`, `ssh_allowed_ip`, `instance_type`, `volume_size`, 'ssh_key_path').
 
 ```bash
 cd project/terraform
@@ -50,12 +50,17 @@ After a successful apply, Terraform will output two values:
 
 ### 2. Configure Ansible Vault
 
-Ensure your `terraform/vault.yml` file contains the required credentials for the Sentry administrator account. Encrypt this file using `ansible-vault`.
+Ensure your **`ansible/vault.yml`** file contains the required credentials for the Sentry administrator account. Encrypt this file using `ansible-vault`.
 
 Required variables inside `vault.yml`:
 
 - `vault_sentry_admin_email`
 - `vault_sentry_admin_password`
+
+```bash
+ansible-vault encrypt ../ansible/vault.yml
+
+```
 
 ### 3. Update Inventory
 
@@ -74,4 +79,4 @@ ansible-playbook -i ../ansible/inventory.ini ../ansible/deploy-sentry.yml --ask-
 
 Once the Ansible playbook completes successfully, wait a few minutes for the Sentry Docker containers to fully initialize. Access the Sentry web interface by navigating to the ALB DNS name provided by the Terraform output using `https://`.
 
-_(Note: Because the ALB uses a self-signed certificate, your browser will display a security warning. You must bypass this warning to access the login page.)_
+> **Note:** Because the ALB uses a self-signed certificate, your browser will display a security warning. You must bypass this warning to access the login page.
