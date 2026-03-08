@@ -1,0 +1,115 @@
+---
+- name: Deploy Self-Hosted Sentry
+  hosts: sentry_servers
+  become: true
+  vars_files:
+    - vault.yml
+  vars:
+    sentry_repo: "https://github.com/getsentry/self-hosted.git"
+    sentry_version: "26.2.1"
+
+  tasks:
+    - name: Update apt cache and install dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - git
+          - python3-pip
+          - python3-docker
+          - acl
+        state: present
+        update_cache: yes
+
+    - name: Ensure keyrings directory exists
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+        state: present
+
+    - name: Install Docker Engine and Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure ubuntu user is in the docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Reset SSH connection to apply docker group to ubuntu user
+      meta: reset_connection
+
+    - name: Clone Sentry Self-Hosted repository
+      git:
+        repo: "{{ sentry_repo }}"
+        dest: /home/ubuntu/sentry-setup
+        version: "{{ sentry_version }}"
+      become: false
+
+    - name: Run Sentry Installation Script
+      shell: "./install.sh --skip-user-creation --no-report-self-hosted-issues"
+      args:
+        chdir: /home/ubuntu/sentry-setup
+        creates: /home/ubuntu/sentry-setup/sentry/sentry.conf.py
+      become: false
+      async: 3600
+      poll: 15
+
+    - name: Add ALB to CSRF_TRUSTED_ORIGINS in sentry.conf.py
+      ansible.builtin.lineinfile:
+        path: /home/ubuntu/sentry-setup/sentry/sentry.conf.py
+        line: 'CSRF_TRUSTED_ORIGINS = ["https://{{ alb_dns_name }}"]'
+        insertafter: EOF
+      become: false
+      notify: Restart Sentry Services
+
+    - name: Start Sentry stack
+      command: docker compose up --wait
+      args:
+        chdir: /home/ubuntu/sentry-setup
+      become: false
+      async: 3600
+      poll: 15
+
+    - name: Create Sentry Admin User (Idempotent)
+      command: >
+        docker compose run -T --rm web sentry createuser 
+        --email "{{ vault_sentry_admin_email }}" 
+        --password "{{ vault_sentry_admin_password }}" 
+        --superuser 
+        --no-input
+      args:
+        chdir: /home/ubuntu/sentry-setup
+      become: false
+      register: create_user_result
+      failed_when:
+        - create_user_result.rc != 0
+        - "'already' not in create_user_result.stderr and 'already' not in create_user_result.stdout"
+      changed_when: create_user_result.rc == 0
+
+  handlers:
+    - name: Restart Sentry Services
+      command: docker compose restart web worker cron relay
+      args:
+        chdir: /home/ubuntu/sentry-setup
+      become: false
